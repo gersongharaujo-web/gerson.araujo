@@ -6,64 +6,90 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 $ErrorActionPreference = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "Spooler de Impressao"
+try { $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size(60,26) } catch { }
+
+$W = 46
+
+function Linha([string]$txt = "", [string]$cor = "Cyan") {
+    Write-Host ("  |  " + $txt.PadRight($W - 4) + "|") -ForegroundColor $cor
+}
+function Borda { Write-Host ("  +" + ("-" * ($W - 1)) + "+") -ForegroundColor DarkCyan }
+
+function Cabecalho {
+    Clear-Host
+    Write-Host ""
+    Borda
+    Linha "        SPOOLER DE IMPRESSAO  -  REMOTO" White
+    Borda
+}
+
+function Ok($m)    { Write-Host ""; Write-Host "   [ OK ] $m" -ForegroundColor Green }
+function Falha($m) { Write-Host ""; Write-Host "   [FALHA] $m" -ForegroundColor Red }
 
 function Pedir-Equipamento {
     while ($true) {
-        Clear-Host
-        $nome = (Read-Host "Equipamento").Trim()
+        Cabecalho
+        Write-Host ""
+        Write-Host "   Equipamento: " -NoNewline -ForegroundColor Yellow
+        $nome = (Read-Host).Trim()
         if (-not $nome) { continue }
+        Write-Host ""
+        Write-Host "   Verificando conexao..." -ForegroundColor DarkGray
         if (Test-Connection -ComputerName $nome -Count 1 -Quiet) { return $nome }
+        Falha "$nome nao responde na rede"
         Write-Host ""
-        Write-Host "FALHOU: $nome nao responde" -ForegroundColor Red
-        Write-Host ""
-        Read-Host "ENTER para tentar de novo" | Out-Null
+        Read-Host "   ENTER para tentar de novo" | Out-Null
     }
 }
 
 function Status { (Get-Service -ComputerName $pc -Name Spooler).Status }
 
 function Parar {
+    Write-Host "   Parando spooler em $pc..." -ForegroundColor DarkGray
     Get-Service -ComputerName $pc -Name Spooler | Stop-Service -Force
     Start-Sleep 3
-    if ((Status) -eq 'Stopped') { Write-Host "OK: spooler PARADO" -ForegroundColor Green }
-    else { Write-Host "FALHOU: spooler nao parou" -ForegroundColor Red }
+    if ((Status) -eq 'Stopped') { Ok "spooler PARADO" } else { Falha "spooler nao parou" }
 }
 
 function Limpar {
+    Write-Host "   Limpando fila em $pc..." -ForegroundColor DarkGray
     $pasta = "\\$pc\c$\Windows\System32\spool\PRINTERS"
-    if (-not (Test-Path $pasta)) { Write-Host "FALHOU: sem acesso a fila" -ForegroundColor Red; return }
+    if (-not (Test-Path $pasta)) { Falha "sem acesso a fila"; return }
     Remove-Item "$pasta\*" -Force
     $r = @(Get-ChildItem $pasta).Count
-    if ($r -eq 0) { Write-Host "OK: fila LIMPA" -ForegroundColor Green }
-    else { Write-Host "FALHOU: restam $r arquivo(s)" -ForegroundColor Red }
+    if ($r -eq 0) { Ok "fila LIMPA" } else { Falha "restam $r arquivo(s) na fila" }
 }
 
 function Iniciar {
+    Write-Host "   Iniciando spooler em $pc..." -ForegroundColor DarkGray
     Get-Service -ComputerName $pc -Name Spooler | Start-Service
     Start-Sleep 3
-    if ((Status) -eq 'Running') { Write-Host "OK: spooler INICIADO" -ForegroundColor Green }
-    else { Write-Host "FALHOU: spooler nao iniciou" -ForegroundColor Red }
+    if ((Status) -eq 'Running') { Ok "spooler INICIADO" } else { Falha "spooler nao iniciou" }
 }
 
 $pc = Pedir-Equipamento
 
 do {
-    Clear-Host
-    Write-Host $pc.ToUpper() -ForegroundColor Cyan
+    Cabecalho
+    Linha ("Equipamento:  " + $pc.ToUpper()) Yellow
+    Borda
+    Linha
+    Linha "  [1]  Parar spooler" Green
+    Linha "  [2]  Limpar fila de impressao" Green
+    Linha "  [3]  Iniciar spooler" Green
+    Linha "  [4]  Trocar equipamento" Cyan
+    Linha "  [0]  Sair" DarkGray
+    Linha
+    Borda
     Write-Host ""
-    Write-Host "1 - Parar"
-    Write-Host "2 - Limpar"
-    Write-Host "3 - Iniciar"
-    Write-Host "4 - Trocar equipamento"
-    Write-Host "0 - Sair"
-    Write-Host ""
-    $op = Read-Host "Opcao"
+    Write-Host "   Opcao: " -NoNewline -ForegroundColor Yellow
+    $op = Read-Host
     Write-Host ""
 
     switch ($op) {
-        "1" { Parar;   Read-Host "ENTER para voltar" | Out-Null }
-        "2" { Limpar;  Read-Host "ENTER para voltar" | Out-Null }
-        "3" { Iniciar; Read-Host "ENTER para voltar" | Out-Null }
+        "1" { Parar;   Write-Host ""; Read-Host "   ENTER para voltar" | Out-Null }
+        "2" { Limpar;  Write-Host ""; Read-Host "   ENTER para voltar" | Out-Null }
+        "3" { Iniciar; Write-Host ""; Read-Host "   ENTER para voltar" | Out-Null }
         "4" { $pc = Pedir-Equipamento }
     }
 } while ($op -ne "0")
